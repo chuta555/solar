@@ -1,0 +1,1350 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="発電量ダッシュボード">
+<link rel="apple-touch-icon" href="icon.png">
+<title>発電量ダッシュボード</title>
+<style>
+:root{
+  --ink:#16242e; --ink-soft:#5b6e79; --line:#d6dfe3; --line-soft:#e8eef0;
+  --paper:#fff; --panel:#eef3f4; --gain:#1f6f52; --loss:#b2453a; --warn:#b07a12;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--panel);color:var(--ink);font-size:14.5px;line-height:1.6;
+ font-family:"Hiragino Kaku Gothic ProN","Yu Gothic Medium","Yu Gothic","Noto Sans JP",sans-serif;
+ -webkit-text-size-adjust:100%}
+.wrap{max-width:1120px;margin:0 auto;padding:20px 18px 70px}
+h1,h2,h3{margin:0;font-weight:600}
+input,select,button{font:inherit;color:inherit}
+input[type=text],input[type=number],select{background:var(--paper);border:1px solid var(--line);border-radius:3px;padding:5px 8px}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+svg{display:block;width:100%;height:auto}
+.axis{font-size:10.5px;fill:var(--ink-soft)}
+.gridline{stroke:var(--line-soft);stroke-width:1}
+.zeroline{stroke:var(--line);stroke-width:1}
+
+.top{background:var(--paper);border:1px solid var(--line);border-top:3px solid var(--ink);padding:16px 20px 0}
+.top h1{font-size:18px}
+.top .sub{color:var(--ink-soft);font-size:12.5px;margin-top:2px}
+.bar{display:flex;gap:2px;margin-top:14px;flex-wrap:wrap}
+.bar button{background:var(--panel);border:1px solid var(--line);border-bottom:0;border-radius:3px 3px 0 0;
+ padding:7px 16px;cursor:pointer;color:var(--ink-soft);position:relative;top:1px}
+.bar button.on{background:var(--paper);color:var(--ink);font-weight:600}
+.range{display:flex;gap:14px;align-items:center;flex-wrap:wrap;background:var(--paper);
+ border:1px solid var(--line);border-top:0;padding:10px 20px;font-size:12.5px;color:var(--ink-soft)}
+.card{background:var(--paper);border:1px solid var(--line);border-top:0;padding:20px;margin-bottom:16px}
+.card + .card{border-top:1px solid var(--line);margin-top:-16px}
+section.tab{display:none}
+section.tab.on{display:block}
+.hint{font-size:12.5px;color:var(--ink-soft);margin-top:10px}
+.num{font-variant-numeric:tabular-nums}
+h2.sec{font-size:13px;color:var(--ink-soft);margin-bottom:12px}
+
+/* site list */
+.site-row{display:grid;grid-template-columns:190px 1fr 300px;gap:18px;align-items:center;
+ padding:13px 0;border-bottom:1px solid var(--line-soft)}
+.site-row:last-child{border-bottom:0}
+@media (max-width:840px){.site-row{grid-template-columns:1fr;gap:8px}}
+.site-name{display:flex;align-items:center;gap:8px;font-weight:600}
+.dot{width:10px;height:10px;border-radius:2px;flex:none}
+.tag{font-size:11px;padding:1px 6px;border-radius:2px;background:var(--panel);color:var(--ink-soft);font-weight:400}
+.tag.rf{background:#fbedd6;color:#8a5a08}
+.mini{display:flex;gap:22px;flex-wrap:wrap}
+.mini div{min-width:78px}
+.mini .lab{font-size:11px;color:var(--ink-soft)}
+.mini .val{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.3}
+.mini .val small{font-size:11.5px;font-weight:400;color:var(--ink-soft);margin-left:2px}
+.alert{color:var(--warn);font-size:12px}
+.nodata{color:var(--ink-soft);font-size:12.5px}
+
+/* pair */
+.pair{border:1px solid var(--line-soft);padding:16px 18px;margin-bottom:14px}
+.pair h3{font-size:15px;margin-bottom:12px}
+.pair .head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.pgrid{display:grid;grid-template-columns:1fr 200px;gap:22px;align-items:start}
+@media (max-width:820px){.pgrid{grid-template-columns:1fr}}
+.figs .fig{margin-bottom:15px}
+.figs .lab{font-size:11.5px;color:var(--ink-soft)}
+.figs .val{font-size:23px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.25}
+.figs .val small{font-size:12px;font-weight:400;color:var(--ink-soft);margin-left:3px}
+.figs .fig.gain .val{color:var(--gain)}
+.legend{display:flex;gap:16px;font-size:12px;color:var(--ink-soft);margin-bottom:6px;flex-wrap:wrap}
+.legend span{display:flex;align-items:center;gap:6px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line-soft);border:1px solid var(--line-soft);margin-top:14px}
+@media (max-width:700px){.grid4{grid-template-columns:repeat(2,1fr)}}
+.cell{background:var(--paper);padding:11px 13px}
+.cell .lab{font-size:11px;color:var(--ink-soft)}
+.cell .val{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
+.cell .val small{font-size:11.5px;font-weight:400;color:var(--ink-soft);margin-left:2px}
+
+/* table */
+.tablewrap{max-height:420px;overflow:auto;border:1px solid var(--line-soft)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:5px 10px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line-soft)}
+th{position:sticky;top:0;background:var(--panel);font-weight:600;color:var(--ink-soft);font-size:12px;z-index:1}
+td:first-child,th:first-child{text-align:left}
+td{font-variant-numeric:tabular-nums}
+td.pos{color:var(--gain)} td.neg{color:var(--loss)}
+td.flag{color:var(--warn)}
+
+/* import + settings */
+.drop{border:1px dashed var(--line);border-radius:4px;background:var(--panel);padding:26px 16px;text-align:center;cursor:pointer}
+.drop:hover,.drop.over{border-color:var(--ink);background:#e4ebed}
+.drop .t{font-weight:600}
+.drop .d{font-size:12.5px;color:var(--ink-soft);margin-top:4px}
+.inputs{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;margin-bottom:14px}
+.inputs label{font-size:12.5px;color:var(--ink-soft);display:flex;flex-direction:column;gap:4px}
+.inputs input[type=number]{width:140px;text-align:right}
+button.act{background:var(--ink);color:#fff;border:0;border-radius:3px;padding:8px 18px;cursor:pointer}
+button.act:hover{background:#243743}
+button.ghost{background:transparent;border:1px solid var(--line);border-radius:3px;padding:7px 14px;cursor:pointer}
+button.ghost:hover{border-color:var(--ink-soft)}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.setrow{display:grid;grid-template-columns:22px 1fr 130px 1fr 90px;gap:12px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line-soft)}
+@media (max-width:760px){.setrow{grid-template-columns:22px 1fr;row-gap:6px}}
+.setrow .clab{font-size:12px;color:var(--ink-soft)}
+.hidden{display:none}
+.hm{overflow-x:auto}
+table.heat{border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+table.heat th{position:static;background:transparent;padding:4px 6px;font-weight:600;color:var(--ink-soft);
+ font-size:11px;white-space:nowrap;border:0;text-align:center}
+table.heat th.rowh{text-align:left;padding-right:12px;color:var(--ink);font-size:12px}
+table.heat td{padding:0;border:1px solid #fff;text-align:center;min-width:48px;height:26px;white-space:nowrap}
+table.heat td.none{background:var(--panel);color:#b3c0c6}
+table.heat tr.out th.rowh{color:var(--loss)}
+.hmscale{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--ink-soft);margin-top:10px;flex-wrap:wrap}
+.hmscale i{width:26px;height:12px;display:inline-block}
+.exc-row{display:grid;grid-template-columns:1fr 210px 1fr 80px;gap:12px;align-items:center;
+ padding:8px 0;border-bottom:1px solid var(--line-soft);font-size:13.5px}
+@media (max-width:760px){.exc-row{grid-template-columns:1fr}}
+.exc-row .d{font-variant-numeric:tabular-nums;color:var(--ink-soft);font-size:12.5px}
+.setblock{padding:4px 0 12px;border-bottom:1px solid var(--line-soft)}
+.setblock:last-child{border-bottom:0}
+.setblock .setrow{border-bottom:0}
+.setspec{display:flex;flex-wrap:wrap;gap:14px;padding:2px 0 0 34px}
+@media (max-width:760px){.setspec{padding-left:0}}
+.setspec label{font-size:12px;color:var(--ink-soft);display:flex;flex-direction:column;gap:3px}
+.setspec input{width:150px}
+.setspec input[type=number]{width:110px;text-align:right}
+.setdata{display:flex;align-items:center;gap:12px;padding:8px 0 0 34px;font-size:12.5px;color:var(--ink-soft)}
+@media (max-width:760px){.setdata{padding-left:0}}
+.setdata .dcount{font-variant-numeric:tabular-nums}
+.specbar{display:flex;flex-wrap:wrap;gap:18px;font-size:12.5px;color:var(--ink-soft);
+ background:var(--panel);border:1px solid var(--line-soft);padding:9px 14px;margin-bottom:14px}
+.specbar b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+.rules{background:var(--panel);border-left:3px solid var(--line);padding:12px 16px;margin-top:14px;font-size:12.5px;color:var(--ink-soft)}
+.rules h4{margin:0 0 6px;font-size:12.5px;color:var(--ink)}
+.rules ul{margin:0;padding-left:18px}
+.rules li{margin-bottom:3px}
+.stage{border:1px solid var(--line);background:var(--panel);padding:16px 18px;margin-top:14px}
+.stage-title{font-size:13.5px;margin-bottom:6px}
+.stage-row{display:grid;grid-template-columns:1fr 230px;gap:16px;align-items:center;
+ padding:11px 0;border-bottom:1px solid var(--line)}
+.stage-row:last-of-type{border-bottom:0}
+@media (max-width:700px){.stage-row{grid-template-columns:1fr;gap:6px}}
+.stage-row .fname{font-weight:600;font-size:13.5px;word-break:break-all}
+.stage-row .meta{font-size:12px;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+.stage-row .over{color:var(--warn);font-size:12px}
+.stage-row .bad{color:var(--loss);font-size:12.5px}
+.stage-row select{width:100%}
+button.act:disabled{background:#a4b3bb;cursor:not-allowed}
+.status{font-size:12.5px;color:var(--ink-soft);margin-top:12px}
+.empty{padding:30px 8px;text-align:center;color:var(--ink-soft)}
+.empty strong{display:block;color:var(--ink);font-size:15px;margin-bottom:4px}
+.printonly{display:none}
+@media print{
+  body{background:#fff;font-size:11.5px}
+  .wrap{max-width:none;padding:0}
+  .noprint,.bar,.range,.top .sub{display:none!important}
+  .top{border:0;padding:0}
+  .top h1{display:none}
+  .printonly{display:block}
+  #printHead{border-bottom:2px solid var(--ink);padding-bottom:10px;margin-bottom:14px}
+  #printHead h1{font-size:17px;margin-bottom:4px}
+  #printHead .meta{font-size:11.5px;color:var(--ink-soft);display:flex;gap:18px;flex-wrap:wrap}
+  section.tab{display:block!important;break-before:page}
+  section.tab:first-of-type{break-before:auto}
+  .card{break-inside:avoid;border:1px solid #ccc;border-top:1px solid #ccc;margin-bottom:10px;padding:12px 14px}
+  .card + .card{margin-top:0}
+  .tablewrap{max-height:none!important;overflow:visible}
+  .secprint{display:block;font-size:13px;font-weight:600;margin-bottom:8px;border-left:3px solid var(--ink);padding-left:8px}
+  th{position:static}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div id="printHead" class="printonly"></div>
+
+<header class="top">
+  <h1>発電量ダッシュボード</h1>
+  <div class="sub">L・eyeの月別CSVを取り込み、5発電所をまとめて見ます。</div>
+  <div class="bar">
+    <button data-tab="dash" class="on">一覧</button>
+    <button data-tab="cmp">比較</button>
+    <button data-tab="diag">PCS診断</button>
+    <button data-tab="graph">グラフ</button>
+    <button data-tab="daily">日別データ</button>
+    <button data-tab="imp">取込・設定</button>
+  </div>
+</header>
+<div class="range noprint">
+  <label>対象期間 <select id="selRange"></select></label>
+  <span id="rangeInfo"></span>
+</div>
+
+<!-- 一覧 -->
+<section class="tab on" id="tab-dash"><div class="secprint printonly">発電所一覧</div>
+  <div class="card">
+    <div id="siteList"></div>
+    <div class="empty hidden" id="dashEmpty">
+      <strong>まだデータがありません</strong>
+      「取込・設定」でL・eyeのCSVを入れてください。
+    </div>
+  </div>
+  <div class="card">
+    <h2 class="sec">PCSのばらつき</h2>
+    <div id="pcsCheck"></div>
+    <div class="hint">日ごとに「その日の全台の中央値に対する比」を求め、その中央値で判定します。毎日同じだけ低ければ「常時」、特定の日だけ落ちていれば「◯日だけ低下」と表示します。常時の低下は搭載枚数の違い・影・ストリング断線など、一時的な低下は停止や故障が疑われます。</div>
+  </div>
+</section>
+
+<!-- 比較 -->
+<section class="tab" id="tab-cmp"><div class="secprint printonly">リパワリング前後の比較</div>
+  <div class="card">
+    <div id="pairs"></div>
+    <div class="empty hidden" id="cmpEmpty">
+      <strong>比較する組み合わせがありません</strong>
+      「取込・設定」で発電所どうしを対にしてください。
+    </div>
+  </div>
+  <div class="card">
+    <h2 class="sec">収益・投資回収の換算</h2>
+    <div class="inputs noprint">
+      <label>売電単価（円/kWh）<input type="number" id="pFit" value="36" step="0.01"></label>
+      <label>リパワリング費用（円）<input type="number" id="pCost" value="3680000" step="1000"></label>
+    </div>
+    <div id="money"></div>
+    <div class="hint">年換算は「対象期間の差 ÷ 計測日数 × 365日」です。日数が少ないうちは季節の偏りが乗ります。</div>
+  </div>
+</section>
+
+<!-- PCS診断 -->
+<section class="tab" id="tab-diag"><div class="secprint printonly">PCS診断</div>
+  <div class="card">
+    <div class="inputs noprint">
+      <label>発電所<select id="diagSite"></select></label>
+      <label>見る指標<select id="diagMode">
+        <option value="eff">変換効率（PCSの健全性）</option>
+        <option value="gen">発電量（パネル・ストリング側も含む）</option>
+      </select></label>
+      <label>低発電日を除く（kWh/台・日未満）<input type="number" id="diagMin" value="5" step="1"></label>
+    </div>
+    <h2 class="sec" id="hmTitle">月ごとの推移（同じ発電所の他のPCSとの差）</h2>
+    <div id="specBar"></div>
+    <div id="heatmap"></div>
+    <div class="hint" id="hmHint"></div>
+  </div>
+  <div class="card">
+    <h2 class="sec">年ごとの変換効率</h2>
+    <div id="yearChart"></div>
+    <div id="yearTable"></div>
+    <div class="hint">年どうしを公平に比べるため、すべての年にそろっている月だけを使います。全台に共通して効率が下がっていれば経年劣化、1台だけ下がっていればその機体の問題です。</div>
+  </div>
+  <div class="card">
+    <h2 class="sec">集計から除く期間</h2>
+    <div id="excList"></div>
+    <div class="inputs noprint" style="margin-top:12px">
+      <label>発電所<select id="excSite"></select></label>
+      <label>開始<input type="date" id="excFrom"></label>
+      <label>終了<input type="date" id="excTo"></label>
+      <label>理由<input type="text" id="excNote" placeholder="改修工事、事故など" style="width:200px"></label>
+      <button class="ghost" id="btnAddExc">追加</button>
+    </div>
+    <div class="hint">
+      事故や改修で発電が止まっていた期間を指定すると、診断・一覧・比較のすべてから除きます。
+      故障や停止のフラグが立ったPCSはその日だけ自動で除外し、他の台が動いているのに1台だけ発電量が3割未満の日も除きます。
+    </div>
+  </div>
+  <div class="card">
+    <h2 class="sec">算出ルールと注意点</h2>
+    <div class="rules">
+      <h4>計算の中身</h4>
+      <ul>
+        <li>変換効率＝交流電力量÷直流電力量。どちらもPCS自身のセンサーが測った値で、外部の校正器ではありません。</li>
+        <li>PCSどうしの比較は、同じ日・同じ天候のデータを使うので負荷の影響が消えます。表示しているのは各月の全台中央値との差です。</li>
+        <li>年どうしの比較は負荷をそろえてから行います。定格出力を入れた場合は「等価稼働時間＝1台の日発電量÷定格出力」、入れない場合は「1台あたりの日発電量」で負荷帯に分け、全年に共通しどの年も3日以上ある帯だけを使い、各帯を同じ重みで平均します。</li>
+        <li>集計から除くもの：手動で指定した期間、故障・系統異常・停止のフラグが立ったPCSのその日、他の台の3割未満しか発電していない台のその日、全台の中央値が設定値（既定5kWh）未満の低発電日。</li>
+      </ul>
+      <h4>読み取るときの注意</h4>
+      <ul>
+        <li>変換効率は負荷で大きく動きます。実測では1日の発電量が100kWh未満の日で98.4%、300kWh超の日で96.6%と、1.8ptの開きが出ました。負荷をそろえずに年や月を並べても、天候の差しか見えません。</li>
+        <li>カタログの最大効率は特定の入力電圧・負荷率で測った値です。日単位の集計値は朝夕の低負荷も含むため、通常はカタログ値を下回ります。この差は劣化ではありません。逆に実測がカタログを上回る場合は、PCSの内部センサーが外部計測と基準が違うことを示しています。</li>
+        <li>CSVは0.1kWh刻みです。1台1日あたり20〜30kWh程度なので、日単位では丸めの影響が効率の分解能を超えます。月単位でおよそ0.05pt、年単位でおよそ0.02ptが判別できる目安です。</li>
+        <li>待機電力などの固定損失はこのデータからは求められません。PCSは発電中しか直流を計測しないためです。実データに損失＝a＋b×発電量を当てはめるとaは負の値になり、物理的な待機損失としては解釈できません。観測できるのは負荷に比例する損失と、電流の二乗に比例する損失だけです。</li>
+        <li>1台だけが他と離れていく変化は信頼できます。全台が同じように動いた場合は、機器の劣化ではなくパネル側の変化や計測系の変更の可能性も検討してください。</li>
+        <li>PCSの寿命は効率の緩やかな低下より、コンデンサの容量抜けや冷却ファンの摩耗による突然の停止として現れることが多いものです。効率の推移だけでなく、故障フラグが夏に増えていないかも併せて見てください。</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- グラフ -->
+<section class="tab" id="tab-graph"><div class="secprint printonly">発電量の推移</div>
+  <div class="card">
+    <h2 class="sec">月ごとの発電量</h2>
+    <div id="monthChart"></div>
+    <div class="hint">対象期間ではなく、取り込んだ全期間を表示します。日数が20日に満たない月は薄く描き、集計途中であることを示します。</div>
+  </div>
+  <div class="card">
+    <div class="inputs noprint">
+      <label>発電所<select id="graphSite"></select></label>
+    </div>
+    <h2 class="sec">年ごとの比較（同じ月を重ねる）</h2>
+    <div id="yoyChart"></div>
+    <div id="yoyTable"></div>
+  </div>
+  <div class="card noprint">
+    <h2 class="sec">PDFで出力</h2>
+    <div class="inputs">
+      <label>資料の宛名<input type="text" id="pdfTo" placeholder="株式会社◯◯ 御中" style="width:220px"></label>
+      <label>作成者<input type="text" id="pdfBy" placeholder="氏名・会社名" style="width:200px"></label>
+    </div>
+    <div class="actions">
+      <button class="act" id="btnPdf">全タブをまとめてPDFにする</button>
+    </div>
+    <div class="hint">印刷ダイアログで「PDFとして保存」を選んでください。一覧・比較・PCS診断・グラフ・算出ルールが1つの資料になります。操作用のボタン類は印刷されません。</div>
+  </div>
+</section>
+
+<!-- 日別 -->
+<section class="tab" id="tab-daily"><div class="secprint printonly">日別データ</div>
+  <div class="card">
+    <h2 class="sec">日別の交流電力量（kWh）</h2>
+    <div class="tablewrap"><table id="tblDaily"><thead></thead><tbody></tbody></table></div>
+    <div class="actions noprint">
+      <button class="ghost" id="btnExport">この表をCSVで書き出す</button>
+      <button class="ghost" id="btnPrint">印刷・PDF保存</button>
+    </div>
+    <div class="hint">故障・系統異常・停止のフラグが立った日は数値の横に「!」が付きます。</div>
+  </div>
+</section>
+
+<!-- 取込・設定 -->
+<section class="tab" id="tab-imp">
+  <div class="card">
+    <h2 class="sec">CSVの取込</h2>
+    <div class="drop" id="drop">
+      <div class="t">CSVをここにドロップ</div>
+      <div class="d">クリックしてファイルを選ぶこともできます。複数ファイルをまとめて入れられます。</div>
+    </div>
+    <input type="file" id="fileInput" accept=".csv,.txt" multiple class="hidden">
+    <div class="stage hidden" id="stage">
+      <h3 class="stage-title">取込先の発電所を選んでください</h3>
+      <div id="stageList"></div>
+      <div class="actions">
+        <button class="act" id="btnCommit" disabled>取り込む</button>
+        <button class="ghost" id="btnCancelStage">やめる</button>
+      </div>
+    </div>
+    <div class="status" id="impStatus"></div>
+    <div class="hint">
+      L・eyeの「データダウンロード」で、データ単位＝1日／データ範囲＝月報／PCS を選んで落としたCSVをそのまま入れてください。
+      PCS全台の交流電力量と直流電力量を自動で合計します。同じ日を入れ直すと新しい値で上書きします。
+    </div>
+  </div>
+  <div class="card">
+    <h2 class="sec">発電所の設定</h2>
+    <div id="settings"></div>
+    <div class="actions noprint">
+      <button class="ghost" id="btnAddSite">発電所を追加</button>
+      <button class="ghost" id="btnBackup">引き継ぎファイルを書き出す</button>
+      <button class="ghost" id="btnRestore">引き継ぎファイルを読み込む</button>
+      <button class="ghost" id="btnClear">全データを消す</button>
+    </div>
+    <input type="file" id="restoreInput" accept=".json" class="hidden">
+    <div class="hint">「対」に指定した発電所どうしが比較タブに並びます。リパワリング済みの側に印を付けてください。</div>
+    <div class="hint">別の担当者に引き継ぐときは、「引き継ぎファイルを書き出す」で保存したJSONと、このアプリのURLの2つを渡してください。受け取った側が同じURLを開いて「引き継ぎファイルを読み込む」を選べば、続きから入力できます。データは各自の端末に保存されるため、共有フォルダに置いても自動では同期しません。</div>
+  </div>
+</section>
+
+</div>
+
+<script>
+"use strict";
+const KEY="leye-dash-v1";
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const PALETTE=["#7c929e","#e0912b","#5f8a8b","#c2643f","#8a7fa8","#4f6b7a"];
+
+let state={
+  sites:[
+    {id:"s1",name:"菖蒲谷(低圧)⑤",rf:false,pair:"s2"},
+    {id:"s2",name:"菖蒲谷(低圧)⑥",rf:true, pair:"s1"},
+    {id:"s3",name:"坂口⑦",rf:false,pair:"s4"},
+    {id:"s4",name:"坂口⑧",rf:true, pair:"s3"},
+    {id:"s5",name:"緑ヶ丘",rf:false,pair:""}
+  ],
+  data:{},          // siteId -> {"2026-06-01": {ac,dc,flag,pcs:[],pcsdc:[],pcsflag:[]}}
+  excludes:[],      // {id,siteId,from,to,note}
+  fit:36, cost:3680000,
+  range:"all"
+};
+
+/* ---------- storage ---------- */
+function load(){ try{ const r=localStorage.getItem(KEY); if(r) state=Object.assign(state,JSON.parse(r)); }catch(e){} }
+function save(){ try{ localStorage.setItem(KEY,JSON.stringify(state)); }
+  catch(e){ $("#impStatus").textContent="保存できませんでした。端末の保存領域が一杯かもしれません。"; } }
+
+/* ---------- helpers ---------- */
+const nf=(n,d=1)=> (n==null||isNaN(n))?"–":n.toLocaleString("ja-JP",{minimumFractionDigits:d,maximumFractionDigits:d});
+const nf0=n=> (n==null||isNaN(n))?"–":Math.round(n).toLocaleString("ja-JP");
+const site=id=> state.sites.find(s=>s.id===id);
+const colorOf=id=>{ const i=state.sites.findIndex(s=>s.id===id); return PALETTE[i%PALETTE.length]; };
+const md=k=>{const p=k.split("-");return `${+p[1]}/${+p[2]}`;};
+
+function allDates(){
+  const set=new Set();
+  for(const id in state.data) for(const k in state.data[id]) set.add(k);
+  return [...set].sort();
+}
+function months(){
+  const set=new Set(allDates().map(k=>k.slice(0,7)));
+  return [...set].sort();
+}
+function inRange(k){
+  const r=state.range;
+  if(r==="all") return true;
+  if(r==="last30"){
+    const ds=allDates(); if(!ds.length) return false;
+    const cut=ds[Math.max(0,ds.length-30)];
+    return k>=cut;
+  }
+  return k.startsWith(r);
+}
+function datesInRange(){ return allDates().filter(inRange); }
+
+function siteStats(id){
+  const d=state.data[id]||{};
+  const ks=datesInRange().filter(k=>d[k] && !isExcluded(id,k));
+  let ac=0,dc=0,flag=0,best=null;
+  ks.forEach(k=>{ ac+=d[k].ac; dc+=d[k].dc||0; if(d[k].flag) flag++;
+    if(!best||d[k].ac>best.v) best={k,v:d[k].ac}; });
+  return {ks, days:ks.length, ac, dc, flag, best,
+    eff: dc>0? ac/dc*100 : null, perDay: ks.length? ac/ks.length : null};
+}
+
+/* ---------- charts ---------- */
+function spark(id){
+  const d=state.data[id]||{}, ks=datesInRange().filter(k=>d[k]);
+  if(!ks.length) return "";
+  const W=300,H=42, max=Math.max(...ks.map(k=>d[k].ac))||1, n=ks.length;
+  const slot=W/n, bw=Math.max(1.1,Math.min(7,slot-1));
+  const c=colorOf(id);
+  const bars=ks.map((k,i)=>{
+    const h=Math.max(1,d[k].ac/max*(H-4));
+    return `<rect x="${(slot*i+(slot-bw)/2).toFixed(1)}" y="${(H-h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" fill="${d[k].flag?"#b2453a":c}"/>`;
+  }).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="height:42px" aria-hidden="true">${bars}</svg>`;
+}
+
+function cumChart(aId,bId){
+  const da=state.data[aId]||{}, db=state.data[bId]||{};
+  const ks=datesInRange().filter(k=>da[k]&&db[k]&&!isExcluded(aId,k)&&!isExcluded(bId,k));
+  if(ks.length<2) return `<div class="nodata">両方そろった日が2日以上必要です。</div>`;
+  const W=660,H=230,L=54,R=12,T=14,B=26;
+  let ca=0,cb=0;
+  const pts=ks.map(k=>{ca+=da[k].ac;cb+=db[k].ac;return{k,a:ca,b:cb};});
+  const max=Math.max(ca,cb)*1.06||1, n=pts.length;
+  const x=i=>L+(n===1?0:i*(W-L-R)/(n-1)), y=v=>T+(H-T-B)*(1-v/max);
+  const pa=pts.map((p,i)=>`${i?"L":"M"}${x(i).toFixed(1)},${y(p.a).toFixed(1)}`).join("");
+  const pb=pts.map((p,i)=>`${i?"L":"M"}${x(i).toFixed(1)},${y(p.b).toFixed(1)}`).join("");
+  const area=pb+pts.slice().reverse().map((p,j)=>`L${x(n-1-j).toFixed(1)},${y(p.a).toFixed(1)}`).join("")+"Z";
+  let g="";
+  for(let t=0;t<=4;t++){ const v=max*t/4,yy=y(v);
+    g+=`<line class="gridline" x1="${L}" y1="${yy.toFixed(1)}" x2="${W-R}" y2="${yy.toFixed(1)}"/>`
+      +`<text class="axis" x="${L-7}" y="${(yy+3.5).toFixed(1)}" text-anchor="end">${nf0(v)}</text>`; }
+  const st=Math.max(1,Math.ceil(n/8)); let xl="";
+  for(let i=0;i<n;i+=st) xl+=`<text class="axis" x="${x(i).toFixed(1)}" y="${H-8}" text-anchor="middle">${md(pts[i].k)}</text>`;
+  const l=pts[n-1];
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="累積発電量の推移">${g}${xl}
+    <path d="${area}" fill="#cfe3d8" opacity=".8"/>
+    <path d="${pa}" fill="none" stroke="${colorOf(aId)}" stroke-width="2"/>
+    <path d="${pb}" fill="none" stroke="${colorOf(bId)}" stroke-width="2.4"/>
+    <circle cx="${x(n-1).toFixed(1)}" cy="${y(l.a).toFixed(1)}" r="3.2" fill="${colorOf(aId)}"/>
+    <circle cx="${x(n-1).toFixed(1)}" cy="${y(l.b).toFixed(1)}" r="3.2" fill="${colorOf(bId)}"/>
+    <text class="axis" x="${L}" y="${T+2}">kWh（累積）</text></svg>`;
+}
+
+/* ---------- 除外期間 ---------- */
+function isExcluded(siteId,k){
+  return (state.excludes||[]).some(e=>e.siteId===siteId && k>=e.from && k<=e.to);
+}
+const median=a=>{ const s=a.slice().sort((x,y)=>x-y); if(!s.length) return 0;
+  const m=s.length>>1; return s.length%2? s[m] : (s[m-1]+s[m])/2; };
+
+/* ---------- PCS診断 ---------- */
+function pcsMonthly(siteId){
+  const d=state.data[siteId]||{};
+  const minKwh=parseFloat($("#diagMin").value)||0;
+  const keys=Object.keys(d).sort().filter(k=>d[k].pcs && d[k].pcsdc && !isExcluded(siteId,k));
+  if(!keys.length) return null;
+  const n=d[keys[0]].pcs.length;
+  const byMonth={};
+  keys.forEach(k=>{
+    const r=d[k]; if(!r.pcs||r.pcs.length!==n||!r.pcsdc) return;
+    const live=r.pcsdc.filter(v=>v>0);
+    const med=median(live);
+    if(med<minKwh) return;                       // 低発電日は効率が歪むため除く
+    const ym=k.slice(0,7);
+    if(!byMonth[ym]) byMonth[ym]=Array.from({length:n},()=>({ac:0,dc:0,days:0}));
+    for(let i=0;i<n;i++){
+      if(r.pcsflag && r.pcsflag[i]) continue;    // 故障・系統異常・停止の日は除く
+      if(r.pcsdc[i] < med*0.3) continue;         // 1台だけ大きく落ちた日も除く
+      const c=byMonth[ym][i];
+      c.ac+=r.pcs[i]; c.dc+=r.pcsdc[i]; c.days++;
+    }
+  });
+  const months=Object.keys(byMonth).sort();
+  if(!months.length) return null;
+  return {n,months,byMonth};
+}
+
+function heatColor(v,span,mode){
+  if(v==null) return "background:var(--panel)";
+  const t=Math.max(-1,Math.min(1,v/span));
+  if(t>=0){ const l=96-t*14; return `background:hsl(168,26%,${l}%)`; }
+  const l=96+t*30, a=Math.abs(t);
+  return `background:hsl(8,${38+a*22}%,${Math.max(60,l)}%);${a>0.75?"color:#5c1e17;font-weight:600":""}`;
+}
+
+function renderDiag(){
+  const siteId=$("#diagSite").value;
+  const mode=$("#diagMode").value;
+  const m=siteId? pcsMonthly(siteId):null;
+  renderSpecBar(siteId);
+  $("#hmTitle").textContent = mode==="eff"
+    ? "月ごとの変換効率（同じ月の他のPCSとの差）"
+    : "月ごとの発電量（同じ月の他のPCSを100とした比）";
+
+  if(!m){
+    $("#heatmap").innerHTML=`<div class="nodata">PCS別のデータがありません。L・eyeのCSVを取り込むか、以前の版で取り込んだデータは入れ直してください。</div>`;
+    $("#hmHint").textContent=""; $("#yearChart").innerHTML=""; $("#yearTable").innerHTML="";
+    renderSpecBar(siteId); return;
+  }
+  const {n,months,byMonth}=m;
+  const span = mode==="eff"? 0.6 : 6;
+  const unit = mode==="eff"? "pt" : "%";
+
+  const val=(c,med)=>{
+    if(!c.days||!c.dc) return null;
+    return mode==="eff" ? (c.ac/c.dc*100)-med : (c.ac/c.days)/med*100-100;
+  };
+  const medOf=arr=>{
+    const vs=arr.filter(c=>c.days&&c.dc).map(c=> mode==="eff"? c.ac/c.dc*100 : c.ac/c.days);
+    return vs.length? median(vs) : null;
+  };
+  const cellText=v=> v==null? "–" : (v>0?"+":"")+v.toFixed(mode==="eff"?2:1);
+
+  // 直近3か月の平均乖離が大きい台を強調
+  const recent=months.slice(-3);
+  const bad=new Set();
+  for(let i=0;i<n;i++){
+    const vs=recent.map(ym=>{ const med=medOf(byMonth[ym]); return med==null?null:val(byMonth[ym][i],med); })
+                   .filter(v=>v!=null);
+    if(vs.length && vs.reduce((a,b)=>a+b,0)/vs.length < -(mode==="eff"?0.3:3)) bad.add(i);
+  }
+
+  let head=`<tr><th class="rowh">PCS</th>${months.map(ym=>`<th>${ym.slice(2).replace("-","/")}</th>`).join("")}</tr>`;
+  let body="";
+  for(let i=0;i<n;i++){
+    body+=`<tr class="${bad.has(i)?"out":""}"><th class="rowh">PCS${i+1}${bad.has(i)?" ▲":""}</th>`;
+    months.forEach(ym=>{
+      const med=medOf(byMonth[ym]);
+      const v=med==null?null:val(byMonth[ym][i],med);
+      body+= v==null? `<td class="none">–</td>` : `<td style="${heatColor(v,span,mode)}">${cellText(v)}</td>`;
+    });
+    body+="</tr>";
+  }
+  $("#heatmap").innerHTML=`<div class="hm"><table class="heat">${head}${body}</table></div>
+    <div class="hmscale">
+      <span>他の台より低い</span>
+      <i style="${heatColor(-span,span,mode)}"></i><i style="${heatColor(-span/2,span,mode)}"></i>
+      <i style="${heatColor(0,span,mode)}"></i><i style="${heatColor(span/2,span,mode)}"></i>
+      <span>高い</span><span>（単位：${unit}）</span>
+    </div>`;
+  $("#hmHint").textContent = bad.size
+    ? `直近3か月の平均で他の台より離れている台：${[...bad].map(i=>"PCS"+(i+1)).join("、")}。`
+      + (mode==="eff" ? "効率の低下はPCS本体（コンデンサ・冷却）を疑う材料です。"
+                      : "発電量だけ低く効率が正常なら、原因はパネル・ストリング側です。")
+    : "直近3か月で他の台から離れている台はありません。";
+
+  renderYears(siteId,m);
+}
+
+/* 負荷帯：定格があれば等価稼働時間(h/日)、なければ kWh/台・日 */
+function bucketDefs(rated){
+  return rated>0
+    ? {edges:[0,1,2,3,4,5,99], unit:"h/日", label:i=>i<5?`${i}〜${i+1}h`:"5h以上",
+       of:kwh=>Math.min(5,Math.floor(kwh/rated))}
+    : {edges:[0,6,12,18,24,30,999], unit:"kWh/台・日", label:i=>i<5?`${i*6}〜${(i+1)*6}`:"30以上",
+       of:kwh=>Math.min(5,Math.floor(kwh/6))};
+}
+
+function loadMatched(siteId){
+  const d=state.data[siteId]||{};
+  const sp=(site(siteId)||{}).spec||{};
+  const bd=bucketDefs(sp.rated);
+  const minKwh=parseFloat($("#diagMin").value)||0;
+  const keys=Object.keys(d).sort().filter(k=>d[k].pcs&&d[k].pcsdc&&!isExcluded(siteId,k));
+  if(!keys.length) return null;
+  const n=d[keys[0]].pcs.length;
+  const acc={};   // year -> bucket -> pcs -> {ac,dc,days}
+  keys.forEach(k=>{
+    const r=d[k]; if(!r.pcs||r.pcs.length!==n||!r.pcsdc) return;
+    const med=median(r.pcsdc.filter(v=>v>0));
+    if(med<minKwh) return;
+    const b=bd.of(med), y=k.slice(0,4);
+    acc[y]=acc[y]||{}; acc[y][b]=acc[y][b]||Array.from({length:n},()=>({ac:0,dc:0,days:0}));
+    for(let i=0;i<n;i++){
+      if(r.pcsflag&&r.pcsflag[i]) continue;
+      if(r.pcsdc[i]<med*0.3) continue;
+      const c=acc[y][b][i]; c.ac+=r.pcs[i]; c.dc+=r.pcsdc[i]; c.days++;
+    }
+  });
+  const years=Object.keys(acc).sort();
+  if(!years.length) return null;
+  // 全年に共通し、どの年も3日以上ある負荷帯だけを使う
+  const common=[0,1,2,3,4,5].filter(b=>years.every(y=>acc[y][b]&&acc[y][b].some(c=>c.days>=3)));
+  const eff=years.map(y=>Array.from({length:n},(_,i)=>{
+    const vs=common.map(b=>{const c=acc[y][b][i]; return (c&&c.dc>0&&c.days>=3)? c.ac/c.dc*100 : null})
+                   .filter(v=>v!=null);
+    return vs.length===common.length && vs.length? vs.reduce((a,b)=>a+b,0)/vs.length : null;
+  }));
+  const curve=years.map(y=>common.map(b=>{
+    const g=acc[y][b]; if(!g) return null;
+    const ac=g.reduce((t,c)=>t+c.ac,0), dc=g.reduce((t,c)=>t+c.dc,0);
+    return dc>0? ac/dc*100 : null;
+  }));
+  const days=years.map(y=>common.reduce((t,b)=>t+(acc[y][b]?Math.max(...acc[y][b].map(c=>c.days)):0),0));
+  return {n,years,common,eff,curve,days,bd,rated:sp.rated};
+}
+
+function renderYears(siteId,m){
+  const L=loadMatched(siteId);
+  const sp=(site(siteId)||{}).spec||{};
+  if(!L || L.years.length<2){
+    $("#yearChart").innerHTML="";
+    $("#yearTable").innerHTML=`<div class="nodata">年どうしの比較には2年以上のデータが必要です。${L?`今は ${L.years.join("、")} 年のみです。`:""}</div>`;
+    return;
+  }
+  if(!L.common.length){
+    $("#yearChart").innerHTML="";
+    $("#yearTable").innerHTML=`<div class="nodata">すべての年に共通する負荷帯がありません。年ごとに天候の傾向が違いすぎるか、データが足りません。</div>`;
+    return;
+  }
+  const {n,years,common,eff,curve,bd}=L;
+  const meds=eff.map(row=>{const v=row.filter(x=>x!=null);return v.length?median(v):null;});
+
+  // 効率–負荷カーブ（年ごと）
+  const W=660,H=230,PL=56,PR=86,T=16,B=32;
+  const flat=curve.flat().filter(v=>v!=null);
+  const lo=Math.min(...flat)-0.15, hi=Math.max(...flat)+0.15;
+  const x=i=>PL+(common.length===1?0:i*(W-PL-PR)/(common.length-1));
+  const y=v=>T+(H-T-B)*(1-(v-lo)/(hi-lo||1));
+  let g="";
+  for(let t=0;t<=4;t++){const v=lo+(hi-lo)*t/4,yy=y(v);
+    g+=`<line class="gridline" x1="${PL}" y1="${yy.toFixed(1)}" x2="${W-PR}" y2="${yy.toFixed(1)}"/>`
+      +`<text class="axis" x="${PL-7}" y="${(yy+3.5).toFixed(1)}" text-anchor="end">${v.toFixed(1)}%</text>`;}
+  const xl=common.map((b,i)=>`<text class="axis" x="${x(i).toFixed(1)}" y="${H-12}" text-anchor="middle">${bd.label(b)}</text>`).join("")
+    +`<text class="axis" x="${(PL+(W-PR))/2}" y="${H-1}" text-anchor="middle">負荷（${bd.unit}）</text>`;
+  const shade=["#c3cfd4","#8fa6ae","var(--ink)"];
+  let lines="",labels="";
+  curve.forEach((row,j)=>{
+    const pts=row.map((v,i)=>v==null?null:`${i?"L":"M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).filter(Boolean).join("");
+    const col=shade[Math.max(0,shade.length-curve.length+j)]||"var(--ink)";
+    lines+=`<path d="${pts}" fill="none" stroke="${col}" stroke-width="${j===curve.length-1?2.6:1.6}"/>`;
+    const last=row.map((v,i)=>({v,i})).filter(o=>o.v!=null).pop();
+    if(last) labels+=`<text class="axis" x="${W-PR+6}" y="${(y(last.v)+3.5).toFixed(1)}" fill="${col}">${years[j]}年</text>`;
+  });
+  $("#yearChart").innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="負荷帯ごとの変換効率">${g}${xl}${lines}${labels}
+    <text class="axis" x="${PL}" y="${T}">変換効率</text></svg>`;
+
+  const deltas=Array.from({length:n},(_,i)=>{
+    const f=eff[0][i], l=eff[eff.length-1][i];
+    return (f!=null&&l!=null)? l-f : null;
+  });
+  const medDelta=(()=>{const v=deltas.filter(x=>x!=null);return v.length?median(v):null;})();
+
+  const catRow = sp.cateff ? (()=>{
+    const last=curve[curve.length-1].filter(v=>v!=null);
+    const high=last.length? last[last.length-1] : null;
+    if(high==null) return "";
+    const gap=high-sp.cateff;
+    return `<div class="specbar" style="margin-top:14px">
+      <span>最も高い負荷帯の実測効率 <b>${high.toFixed(2)}%</b></span>
+      <span>カタログ最大効率 <b>${sp.cateff.toFixed(1)}%</b></span>
+      <span>差 <b>${(gap>0?"+":"")+gap.toFixed(2)}pt</b></span>
+      <span>${gap>0?"実測がカタログを上回っています。両者は測定条件が違うため、この差は性能ではなくセンサー基準の違いを示します。"
+                   :"日単位の集計値は低負荷の時間帯を含むため、カタログ値を下回るのが普通です。差そのものは劣化ではありません。"}</span>
+    </div>`;
+  })() : "";
+
+  $("#yearTable").innerHTML=`<div class="tablewrap" style="max-height:none;margin-top:14px"><table>
+    <thead><tr><th>PCS</th>${years.map(y=>`<th>${y}年</th>`).join("")}<th>初年比</th><th>他台との相対</th></tr></thead>
+    <tbody>${Array.from({length:n},(_,i)=>{
+      const dv=deltas[i], rel=(dv!=null&&medDelta!=null)? dv-medDelta : null;
+      return `<tr><td>PCS${i+1}</td>${eff.map(r=>`<td>${r[i]==null?"–":r[i].toFixed(2)+"%"}</td>`).join("")}
+        <td class="${dv==null?"":(dv<0?"neg":"pos")}">${dv==null?"–":(dv>0?"+":"")+dv.toFixed(2)+"pt"}</td>
+        <td class="${(rel!=null&&rel<-0.3)?"neg":""}">${rel==null?"–":(rel>0?"+":"")+rel.toFixed(2)+"pt"}</td></tr>`;
+    }).join("")}
+    <tr><td><strong>全台の中央値</strong></td>${meds.map(v=>`<td><strong>${v==null?"–":v.toFixed(2)+"%"}</strong></td>`).join("")}
+      <td><strong>${medDelta==null?"–":(medDelta>0?"+":"")+medDelta.toFixed(2)+"pt"}</strong></td><td></td></tr>
+    </tbody></table></div>
+    <div class="hint">比較に使った負荷帯：${common.map(b=>bd.label(b)).join("、")}（${bd.unit}）${L.rated?"":"　※定格出力を設定すると等価稼働時間で区切ります。"}</div>
+    ${catRow}`;
+}
+
+function renderSpecBar(siteId){
+  const s=site(siteId); const sp=(s&&s.spec)||{};
+  const bits=[];
+  if(sp.model) bits.push(`型番 <b>${sp.model}</b>`);
+  if(sp.rated) bits.push(`定格 <b>${sp.rated}</b> kW/台`);
+  if(sp.cateff) bits.push(`カタログ最大効率 <b>${sp.cateff}</b>%`);
+  if(sp.start){
+    const [y,mo]=sp.start.split("-").map(Number);
+    const now=new Date(), yrs=(now.getFullYear()-y)+(now.getMonth()+1-mo)/12;
+    bits.push(`運転開始 <b>${y}年${mo}月</b>（${yrs.toFixed(1)}年経過${yrs>=10?"・10年経過":""}）`);
+  }
+  $("#specBar").innerHTML = bits.length
+    ? `<div class="specbar">${bits.join("")}</div>`
+    : `<div class="specbar">カタログの型番・定格出力・最大効率・運転開始を「取込・設定」に入れると、負荷をそろえた年比較とカタログ対照が使えます。</div>`;
+}
+
+function renderExc(){
+  const list=state.excludes||[];
+  $("#excList").innerHTML = list.length? list.map(e=>`
+    <div class="exc-row" data-id="${e.id}">
+      <div>${site(e.siteId)?site(e.siteId).name:"（削除済みの発電所）"}</div>
+      <div class="d">${e.from.replace(/-/g,"/")} 〜 ${e.to.replace(/-/g,"/")}</div>
+      <div>${e.note||""}</div>
+      <div><button class="ghost excDel">削除</button></div>
+    </div>`).join("")
+    : `<div class="nodata">除外している期間はありません。</div>`;
+  const opts=state.sites.map(s=>`<option value="${s.id}">${s.name}</option>`).join("");
+  ["#excSite","#diagSite"].forEach(sel=>{
+    const cur=$(sel).value; $(sel).innerHTML=opts;
+    if([...$(sel).options].some(o=>o.value===cur)) $(sel).value=cur;
+  });
+}
+
+
+/* ---------- グラフ ---------- */
+function monthTotals(){
+  const out={};   // siteId -> ym -> {ac,days}
+  state.sites.forEach(sv=>{
+    const d=state.data[sv.id]||{}; const m={};
+    Object.keys(d).sort().forEach(k=>{
+      if(isExcluded(sv.id,k)) return;
+      const ym=k.slice(0,7); m[ym]=m[ym]||{ac:0,days:0};
+      m[ym].ac+=d[k].ac; m[ym].days++;
+    });
+    if(Object.keys(m).length) out[sv.id]=m;
+  });
+  return out;
+}
+
+function renderMonthChart(){
+  const t=monthTotals(), ids=Object.keys(t);
+  if(!ids.length){ $("#monthChart").innerHTML=`<div class="nodata">取り込んだデータがありません。</div>`; return; }
+  const months=[...new Set(ids.flatMap(id=>Object.keys(t[id])))].sort();
+  const W=680,H=250,L=60,R=12,T=16,B=44;
+  const max=Math.max(...ids.flatMap(id=>months.map(m=>t[id][m]?t[id][m].ac:0)))*1.08||1;
+  const slot=(W-L-R)/months.length, bw=Math.min(14,Math.max(2,(slot-4)/ids.length));
+  const y=v=>T+(H-T-B)*(1-v/max);
+  let g="";
+  for(let i=0;i<=4;i++){ const v=max*i/4, yy=y(v);
+    g+=`<line class="gridline" x1="${L}" y1="${yy.toFixed(1)}" x2="${W-R}" y2="${yy.toFixed(1)}"/>`
+      +`<text class="axis" x="${L-7}" y="${(yy+3.5).toFixed(1)}" text-anchor="end">${nf0(v)}</text>`; }
+  let bars="";
+  months.forEach((m,mi)=>{
+    ids.forEach((id,si)=>{
+      const c=t[id][m]; if(!c) return;
+      const x=L+slot*mi+(slot-bw*ids.length)/2+bw*si;
+      bars+=`<rect x="${x.toFixed(1)}" y="${y(c.ac).toFixed(1)}" width="${bw.toFixed(1)}" height="${(y(0)-y(c.ac)).toFixed(1)}" fill="${colorOf(id)}" opacity="${c.days<20?0.42:1}"><title>${site(id).name} ${m} ${nf0(c.ac)}kWh / ${c.days}日</title></rect>`;
+    });
+  });
+  const st=Math.max(1,Math.ceil(months.length/12));
+  let xl="";
+  for(let i=0;i<months.length;i+=st){
+    const p=months[i].split("-");
+    xl+=`<text class="axis" x="${(L+slot*(i+0.5)).toFixed(1)}" y="${H-26}" text-anchor="middle">${+p[1]}月</text>`;
+    if(i===0||months[i].slice(0,4)!==months[i-st]?.slice(0,4))
+      xl+=`<text class="axis" x="${(L+slot*(i+0.5)).toFixed(1)}" y="${H-13}" text-anchor="middle">${p[0]}</text>`;
+  }
+  const leg=ids.map(id=>`<span><i class="dot" style="background:${colorOf(id)}"></i>${site(id).name}</span>`).join("");
+  $("#monthChart").innerHTML=`<div class="legend">${leg}</div>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="月ごとの発電量">${g}${bars}${xl}
+    <text class="axis" x="${L}" y="${T}">kWh</text></svg>`;
+}
+
+function renderYoY(){
+  const id=$("#graphSite").value;
+  const d=state.data[id]||{};
+  const acc={};   // year -> month(1-12) -> {ac,days}
+  Object.keys(d).sort().forEach(k=>{
+    if(isExcluded(id,k)) return;
+    const y=k.slice(0,4), mo=+k.slice(5,7);
+    acc[y]=acc[y]||{}; acc[y][mo]=acc[y][mo]||{ac:0,days:0};
+    acc[y][mo].ac+=d[k].ac; acc[y][mo].days++;
+  });
+  const years=Object.keys(acc).sort();
+  if(!years.length){ $("#yoyChart").innerHTML=`<div class="nodata">この発電所のデータがありません。</div>`; $("#yoyTable").innerHTML=""; return; }
+  const W=680,H=250,L=60,R=70,T=16,B=30;
+  const max=Math.max(...years.flatMap(y=>Object.values(acc[y]).map(c=>c.ac)))*1.08||1;
+  const x=m=>L+(m-1)*(W-L-R)/11, y=v=>T+(H-T-B)*(1-v/max);
+  let g="";
+  for(let i=0;i<=4;i++){ const v=max*i/4, yy=y(v);
+    g+=`<line class="gridline" x1="${L}" y1="${yy.toFixed(1)}" x2="${W-R}" y2="${yy.toFixed(1)}"/>`
+      +`<text class="axis" x="${L-7}" y="${(yy+3.5).toFixed(1)}" text-anchor="end">${nf0(v)}</text>`; }
+  let xl=""; for(let m=1;m<=12;m++) xl+=`<text class="axis" x="${x(m).toFixed(1)}" y="${H-12}" text-anchor="middle">${m}</text>`;
+  const shades=["#cfd8dc","#a8b8c0","#7c929e","#4f6b7a","var(--ink)"];
+  let lines="",labels="",dots="";
+  years.forEach((yr,j)=>{
+    const col=shades[Math.max(0,shades.length-years.length+j)]||"var(--ink)";
+    const pts=[]; for(let m=1;m<=12;m++){ const c=acc[yr][m]; if(c) pts.push({m,v:c.ac,full:c.days>=20}); }
+    if(!pts.length) return;
+    lines+=`<path d="${pts.map((p,i)=>`${i?"L":"M"}${x(p.m).toFixed(1)},${y(p.v).toFixed(1)}`).join("")}" fill="none" stroke="${col}" stroke-width="${j===years.length-1?2.4:1.5}"/>`;
+    pts.forEach(p=>{ if(!p.full) dots+=`<circle cx="${x(p.m).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="2.6" fill="#fff" stroke="${col}" stroke-width="1.4"/>`; });
+    const last=pts[pts.length-1];
+    labels+=`<text class="axis" x="${Math.min(W-R+6,x(last.m)+8).toFixed(1)}" y="${(y(last.v)+3.5).toFixed(1)}" fill="${col}">${yr}年</text>`;
+  });
+  $("#yoyChart").innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="年ごとの月別発電量">${g}${xl}${lines}${dots}${labels}
+    <text class="axis" x="${L}" y="${T}">kWh</text>
+    <text class="axis" x="${(L+W-R)/2}" y="${H-1}" text-anchor="middle">月</text></svg>`;
+
+  const rows=[];
+  for(let m=1;m<=12;m++){
+    if(!years.some(yr=>acc[yr][m])) continue;
+    const vals=years.map(yr=>acc[yr][m]);
+    const prev=vals[vals.length-2], last=vals[vals.length-1];
+    const yoy=(prev&&last&&prev.ac>0)? (last.ac/prev.ac*100-100) : null;
+    rows.push(`<tr><td>${m}月</td>${vals.map(c=>`<td>${c?nf0(c.ac)+(c.days<20?` (${c.days}日)`:""):"–"}</td>`).join("")}
+      <td class="${yoy==null?"":(yoy>=0?"pos":"neg")}">${yoy==null?"–":(yoy>0?"+":"")+yoy.toFixed(1)+"%"}</td></tr>`);
+  }
+  $("#yoyTable").innerHTML=`<div class="tablewrap" style="max-height:none;margin-top:14px"><table>
+    <thead><tr><th>月</th>${years.map(y=>`<th>${y}年</th>`).join("")}<th>前年比</th></tr></thead>
+    <tbody>${rows.join("")}</tbody></table></div>
+    <div class="hint">白丸と括弧つきの日数は、その月のデータが20日に満たないことを示します。前年比の判断からは外してください。</div>`;
+}
+
+function renderGraph(){
+  const opts=state.sites.map(s=>`<option value="${s.id}">${s.name}</option>`).join("");
+  const cur=$("#graphSite").value; $("#graphSite").innerHTML=opts;
+  if([...$("#graphSite").options].some(o=>o.value===cur)) $("#graphSite").value=cur;
+  renderMonthChart(); renderYoY();
+}
+
+/* ---------- PDF ---------- */
+function buildPrintHead(){
+  const ds=allDates();
+  const to=$("#pdfTo").value.trim(), by=$("#pdfBy").value.trim();
+  const today=new Date().toLocaleDateString("ja-JP");
+  const names=state.sites.filter(s=>Object.keys(state.data[s.id]||{}).length).map(s=>s.name).join("、");
+  $("#printHead").innerHTML=`<h1>発電量および PCS 状態 報告</h1>
+    <div class="meta">
+      ${to?`<span>${to}</span>`:""}
+      <span>対象：${names||"—"}</span>
+      <span>期間：${ds.length?ds[0].replace(/-/g,"/")+" 〜 "+ds[ds.length-1].replace(/-/g,"/"):"—"}</span>
+      <span>作成日：${today}</span>
+      ${by?`<span>作成：${by}</span>`:""}
+    </div>`;
+}
+
+/* ---------- render ---------- */
+function renderRange(){
+  const ms=months(), sel=$("#selRange");
+  const cur=state.range;
+  sel.innerHTML=`<option value="all">全期間</option><option value="last30">直近30日</option>`
+    + ms.map(m=>`<option value="${m}">${m.replace("-","年")}月</option>`).join("");
+  sel.value=[...sel.options].some(o=>o.value===cur)?cur:"all";
+  state.range=sel.value;
+  const ds=datesInRange();
+  $("#rangeInfo").textContent = ds.length? `${ds[0].replace(/-/g,"/")} 〜 ${ds[ds.length-1].replace(/-/g,"/")}（${ds.length}日）` : "";
+}
+
+function renderDash(){
+  const any=allDates().length>0;
+  $("#dashEmpty").classList.toggle("hidden",any);
+  $("#siteList").innerHTML = state.sites.map(s=>{
+    const st=siteStats(s.id);
+    if(!st.days) return `<div class="site-row">
+      <div class="site-name"><i class="dot" style="background:${colorOf(s.id)}"></i>${s.name}${s.rf?'<span class="tag rf">RF済</span>':''}</div>
+      <div class="nodata">この期間のデータがありません</div><div></div></div>`;
+    return `<div class="site-row">
+      <div class="site-name"><i class="dot" style="background:${colorOf(s.id)}"></i>${s.name}${s.rf?'<span class="tag rf">RF済</span>':''}</div>
+      <div class="mini">
+        <div><div class="lab">交流電力量</div><div class="val">${nf0(st.ac)}<small>kWh</small></div></div>
+        <div><div class="lab">1日平均</div><div class="val">${nf(st.perDay,1)}<small>kWh</small></div></div>
+        <div><div class="lab">PCS効率</div><div class="val">${st.eff?nf(st.eff,2)+'<small>%</small>':"–"}</div></div>
+        <div><div class="lab">計測日数</div><div class="val">${st.days}<small>日</small>${st.flag?`<div class="alert">異常フラグ ${st.flag}日</div>`:""}</div></div>
+      </div>
+      <div>${spark(s.id)}</div>
+    </div>`;
+  }).join("");
+
+  // PCS balance — 日ごとに「その日の中央値との比」を取り、常時の低下と一時的な低下を分ける
+  const out=[];
+  state.sites.forEach(sv=>{
+    const d=state.data[sv.id]||{};
+    const ks=datesInRange().filter(k=>d[k]&&d[k].pcs&&d[k].pcs.length&&!isExcluded(sv.id,k));
+    if(!ks.length) return;
+    const n=d[ks[0]].pcs.length;
+    const ratios=Array.from({length:n},()=>[]), effs=Array.from({length:n},()=>({ac:0,dc:0}));
+    let used=0;
+    ks.forEach(k=>{
+      const r=d[k]; if(r.pcs.length!==n) return;
+      const med=median(r.pcs.filter(v=>v>0));
+      if(med<3) return;                      // 発電がごく少ない日は比が暴れるため使わない
+      used++;
+      for(let i=0;i<n;i++){
+        ratios[i].push(r.pcs[i]/med);
+        if(r.pcsdc&&r.pcsdc[i]>0){ effs[i].ac+=r.pcs[i]; effs[i].dc+=r.pcsdc[i]; }
+      }
+    });
+    if(!used){ return; }
+    const effPct=effs.map(c=>c.dc>0?c.ac/c.dc*100:null);
+    const effMed=(()=>{const v=effPct.filter(x=>x!=null);return v.length?median(v):null;})();
+    const items=[];
+    for(let i=0;i<n;i++){
+      const typ=median(ratios[i]);                              // ふだんの水準
+      const outage=ratios[i].filter(v=>v<typ*0.7).length;       // 自分の普段より大きく落ちた日
+      const dev=(typ-1)*100;
+      if(typ>=0.97 && !outage) continue;
+      // ふだんの水準がどれだけ安定しているか（四分位範囲）
+      const sorted=ratios[i].slice().sort((a,b)=>a-b);
+      const q=f=>sorted[Math.min(sorted.length-1,Math.floor(sorted.length*f))];
+      const iqr=(q(0.75)-q(0.25))*100;
+      const eDev=(effPct[i]!=null&&effMed!=null)? effPct[i]-effMed : null;
+      items.push({i,dev,outage,typ,iqr,eDev});
+    }
+    const body = items.length
+      ? items.sort((a,b)=>a.typ-b.typ).map(o=>{
+          const parts=[];
+          if(o.dev<-3) parts.push(`常時 ${o.dev.toFixed(1)}%`);
+          if(o.outage) parts.push(`${o.outage}日は停止・大幅低下`);
+          if(!parts.length) parts.push(`${o.dev.toFixed(1)}%`);
+          const notes=[];
+          if(o.dev<-3) notes.push(o.iqr<3? "毎日ほぼ同じ差" : `日による振れ幅 ${o.iqr.toFixed(1)}%`);
+          if(o.eDev!=null) notes.push(o.eDev<-0.3
+            ? "効率も低い → PCS本体を疑う"
+            : "効率は正常 → 直流側（搭載枚数の違い・影・ストリング断線）");
+          return `<div style="margin-left:14px">
+            <span class="alert">PCS${o.i+1}　${parts.join("／")}</span>
+            ${notes.length?`<span class="nodata">（${notes.join("、")}）</span>`:""}</div>`;
+        }).join("")
+      : `<div style="margin-left:14px;color:var(--gain)">ばらつきなし</div>`;
+    out.push(`<div style="margin-bottom:12px"><strong>${sv.name}</strong>　PCS${n}台・判定に使った日数 ${used}日${body}</div>`);
+  });
+  $("#pcsCheck").innerHTML = out.length? out.join("") : `<div class="nodata">PCS別のデータがまだありません。</div>`;
+}
+
+function pairList(){
+  const seen=new Set(), ps=[];
+  state.sites.forEach(s=>{
+    if(!s.pair || seen.has(s.id)) return;
+    const o=site(s.pair); if(!o) return;
+    seen.add(s.id); seen.add(o.id);
+    const before = s.rf && !o.rf ? o : s;
+    const after  = s.rf && !o.rf ? s : o;
+    ps.push([before.id, after.id]);
+  });
+  return ps;
+}
+
+function renderCmp(){
+  const ps=pairList();
+  $("#cmpEmpty").classList.toggle("hidden",ps.length>0);
+  $("#pairs").innerHTML = ps.map(([a,b])=>{
+    const da=state.data[a]||{}, db=state.data[b]||{};
+    const ks=datesInRange().filter(k=>da[k]&&db[k]&&!isExcluded(a,k)&&!isExcluded(b,k));
+    const sa=ks.reduce((t,k)=>t+da[k].ac,0), sb=ks.reduce((t,k)=>t+db[k].ac,0);
+    const diff=sb-sa, rate=sa>0?sb/sa*100:null, per=ks.length?diff/ks.length:null;
+    return `<div class="pair">
+      <div class="head"><h3>${site(a).name} と ${site(b).name}</h3>
+        <span class="nodata">両方そろった日 ${ks.length}日</span></div>
+      <div class="legend">
+        <span><i class="dot" style="background:${colorOf(a)}"></i>${site(a).name} 累積</span>
+        <span><i class="dot" style="background:${colorOf(b)}"></i>${site(b).name} 累積</span>
+        <span><i class="dot" style="background:#cfe3d8"></i>差</span>
+      </div>
+      <div class="pgrid">
+        <div>${cumChart(a,b)}</div>
+        <div class="figs">
+          <div class="fig gain"><div class="lab">累積発電量の差</div><div class="val">${ks.length?(diff>=0?"+":"")+nf(diff,1)+'<small>kWh</small>':"–"}</div></div>
+          <div class="fig"><div class="lab">${site(b).name} ÷ ${site(a).name}</div><div class="val">${rate?nf(rate,1)+'<small>%</small>':"–"}</div></div>
+          <div class="fig"><div class="lab">1日あたり平均の差</div><div class="val">${per!=null?(per>=0?"+":"")+nf(per,1)+'<small>kWh/日</small>':"–"}</div></div>
+        </div>
+      </div></div>`;
+  }).join("");
+
+  // money for the first pair
+  const fit=parseFloat($("#pFit").value)||0, cost=parseFloat($("#pCost").value)||0;
+  if(!ps.length){ $("#money").innerHTML=`<div class="nodata">比較の組み合わせがありません。</div>`; return; }
+  $("#money").innerHTML = ps.map(([a,b])=>{
+    const da=state.data[a]||{}, db=state.data[b]||{};
+    const ks=datesInRange().filter(k=>da[k]&&db[k]&&!isExcluded(a,k)&&!isExcluded(b,k));
+    const diff=ks.reduce((t,k)=>t+db[k].ac-da[k].ac,0);
+    const annual=ks.length? diff/ks.length*365 : null;
+    const yen=annual!=null? annual*fit : null;
+    return `<div style="margin-bottom:16px"><strong>${site(a).name} → ${site(b).name}</strong>
+      <div class="grid4">
+        <div class="cell"><div class="lab">計測日数</div><div class="val">${ks.length}<small>日</small></div></div>
+        <div class="cell"><div class="lab">年換算の増加量</div><div class="val">${annual!=null?nf0(annual)+'<small>kWh/年</small>':"–"}</div></div>
+        <div class="cell"><div class="lab">年換算の増収</div><div class="val">${yen!=null?nf0(yen)+'<small>円/年</small>':"–"}</div></div>
+        <div class="cell"><div class="lab">投資回収期間</div><div class="val">${(yen&&yen>0&&cost>0)?nf(cost/yen,1)+'<small>年</small>':"–"}</div></div>
+      </div></div>`;
+  }).join("");
+}
+
+function renderDaily(){
+  const ks=datesInRange(), ss=state.sites;
+  $("#tblDaily").querySelector("thead").innerHTML =
+    `<tr><th>日付</th>${ss.map(s=>`<th>${s.name}</th>`).join("")}${pairList().map(([a,b])=>`<th>${site(b).name}−${site(a).name}</th>`).join("")}</tr>`;
+  $("#tblDaily").querySelector("tbody").innerHTML = ks.map(k=>{
+    const cells=ss.map(s=>{
+      const v=(state.data[s.id]||{})[k];
+      return `<td class="${v&&v.flag?"flag":""}">${v?nf(v.ac,1)+(v.flag?" !":""):"–"}</td>`;
+    }).join("");
+    const diffs=pairList().map(([a,b])=>{
+      const va=(state.data[a]||{})[k], vb=(state.data[b]||{})[k];
+      if(!va||!vb) return `<td>–</td>`;
+      const d=vb.ac-va.ac;
+      return `<td class="${d>=0?"pos":"neg"}">${(d>=0?"+":"")+nf(d,1)}</td>`;
+    }).join("");
+    return `<tr><td>${k.replace(/-/g,"/")}</td>${cells}${diffs}</tr>`;
+  }).join("");
+}
+
+function renderSettings(){
+  $("#settings").innerHTML = state.sites.map((s,i)=>{
+    const sp=s.spec||{};
+    return `
+    <div class="setblock" data-id="${s.id}">
+      <div class="setrow" data-id="${s.id}">
+        <i class="dot" style="background:${colorOf(s.id)}"></i>
+        <input type="text" class="setName" value="${s.name.replace(/"/g,"&quot;")}">
+        <label class="clab"><input type="checkbox" class="setRf" ${s.rf?"checked":""}> リパワリング済み</label>
+        <label class="clab">対にする発電所
+          <select class="setPair">
+            <option value="">（なし）</option>
+            ${state.sites.filter(o=>o.id!==s.id).map(o=>`<option value="${o.id}" ${s.pair===o.id?"selected":""}>${o.name}</option>`).join("")}
+          </select></label>
+        <button class="ghost setDel">削除</button>
+      </div>
+      <div class="setdata">
+        <span class="dcount">${(()=>{const c=Object.keys(state.data[s.id]||{}).length;return c?`取込済み ${c}日分`:"データなし";})()}</span>
+        <button class="ghost setWipe">この発電所のデータだけ消す</button>
+      </div>
+      <div class="setspec">
+        <label>PCS型番<input type="text" class="spModel" value="${(sp.model||"").replace(/"/g,"&quot;")}" placeholder="カタログの型番"></label>
+        <label>定格出力（kW/台）<input type="number" class="spRated" step="0.1" value="${sp.rated??""}" placeholder="4.4"></label>
+        <label>カタログ最大効率（%）<input type="number" class="spEff" step="0.1" value="${sp.cateff??""}" placeholder="95.5"></label>
+        <label>運転開始<input type="month" class="spStart" value="${sp.start||""}"></label>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function renderAll(){ renderRange(); renderExc(); renderDash(); renderCmp(); renderDiag(); renderGraph(); renderDaily(); renderSettings(); }
+
+/* ---------- CSV ---------- */
+function decode(buf){
+  try{ return new TextDecoder("utf-8",{fatal:true}).decode(buf); }
+  catch(e){ return new TextDecoder("shift_jis").decode(buf); }
+}
+function parseCSV(t){
+  const out=[]; let row=[],cell="",q=false; t=t.replace(/^\uFEFF/,"");
+  for(let i=0;i<t.length;i++){ const c=t[i];
+    if(q){ if(c==='"'){ if(t[i+1]==='"'){cell+='"';i++;} else q=false; } else cell+=c; }
+    else if(c==='"') q=true;
+    else if(c===","||c==="\t"){ row.push(cell); cell=""; }
+    else if(c==="\n"){ row.push(cell); out.push(row); row=[]; cell=""; }
+    else if(c!=="\r") cell+=c;
+  }
+  if(cell!==""||row.length){ row.push(cell); out.push(row); }
+  return out.filter(r=>r.some(c=>c.trim()!==""));
+}
+const toKey=v=>{ const m=String(v||"").match(/(\d{4})[\/\-年.](\d{1,2})[\/\-月.](\d{1,2})/);
+  return m?`${m[1]}-${String(+m[2]).padStart(2,"0")}-${String(+m[3]).padStart(2,"0")}`:null; };
+const toNum=v=>{ const s=String(v??"").replace(/,/g,"").replace(/[^\d.\-]/g,"").trim();
+  if(s===""||s==="-") return null; const n=parseFloat(s); return isNaN(n)?null:n; };
+
+let stage=[];   // {name, ok, rows:[{k,ac,dc,flag,pcs}], pcsCount, siteId}
+
+function analyze(table){
+  if(!table.length) return {ok:false};
+  const head=table[0].map(h=>h.trim());
+  const di=head.findIndex(h=>/^date$/i.test(h)||/日付|日時/.test(h));
+  if(di<0) return {ok:false};
+
+  // PCS1, PCS2 ... ごとに列をまとめる
+  const g={};
+  head.forEach((h,i)=>{
+    const m=h.match(/^(PCS\s*\d+)/);
+    const key=m? m[1].replace(/\s+/g,"") : "_";
+    if(!g[key]) g[key]={ac:-1,dc:-1,fl:[]};
+    if(/交流電力量/.test(h)) g[key].ac=i;
+    else if(/直流電力量/.test(h)) g[key].dc=i;
+    if(/故障|系統異常|停止/.test(h)) g[key].fl.push(i);
+  });
+  let keys=Object.keys(g).filter(k=>k!=="_" && g[k].ac>=0)
+            .sort((a,b)=>(+a.replace(/\D/g,""))-(+b.replace(/\D/g,"")));
+  if(!keys.length){                       // 「合計」で落としたCSVなど
+    const ac=head.findIndex(h=>/交流電力量/.test(h));
+    if(ac<0) return {ok:false};
+    g._={ac, dc:head.findIndex(h=>/直流電力量/.test(h)), fl:g._?g._.fl:[]};
+    keys=["_"];
+  }
+
+  const rows=[];
+  for(const r of table.slice(1)){
+    const k=toKey(r[di]); if(!k) continue;
+    const pcs=[],pcsdc=[],pcsflag=[];
+    keys.forEach(key=>{
+      const c=g[key];
+      pcs.push(Math.round((toNum(r[c.ac])||0)*10)/10);
+      pcsdc.push(c.dc>=0? Math.round((toNum(r[c.dc])||0)*10)/10 : 0);
+      pcsflag.push(c.fl.some(i=>(toNum(r[i])||0)>0)?1:0);
+    });
+    rows.push({
+      k,
+      ac:Math.round(pcs.reduce((a,b)=>a+b,0)*10)/10,
+      dc:Math.round(pcsdc.reduce((a,b)=>a+b,0)*10)/10,
+      flag:pcsflag.some(v=>v)?1:0,
+      pcs,pcsdc,pcsflag
+    });
+  }
+  if(!rows.length) return {ok:false};
+  rows.sort((a,b)=>a.k<b.k?-1:1);
+  return {ok:true, rows, pcsCount:keys.length};
+}
+
+function renderStage(){
+  const box=$("#stage");
+  if(!stage.length){ box.classList.add("hidden"); $("#stageList").innerHTML=""; return; }
+  box.classList.remove("hidden");
+  const opts=state.sites.map(s=>`<option value="${s.id}">${s.name}</option>`).join("");
+  $("#stageList").innerHTML = stage.map((f,i)=>{
+    if(!f.ok) return `<div class="stage-row" data-i="${i}">
+      <div><div class="fname">${f.name}</div>
+        <div class="bad">日付列または交流電力量の列が見つかりません。L・eyeのCSVか確認してください。</div></div>
+      <div><button class="ghost stageDel">取り消す</button></div></div>`;
+    const total=f.rows.reduce((t,r)=>t+r.ac,0);
+    const flags=f.rows.filter(r=>r.flag).length;
+    let over="";
+    if(f.siteId){
+      const d=state.data[f.siteId]||{};
+      const dup=f.rows.filter(r=>d[r.k]).length;
+      if(dup) over=`<div class="over">${site(f.siteId).name} には同じ日付が${dup}日分すでにあります。取り込むと新しい値で上書きします。</div>`;
+    }
+    return `<div class="stage-row" data-i="${i}">
+      <div>
+        <div class="fname">${f.name}</div>
+        <div class="meta">${f.rows[0].k.replace(/-/g,"/")} 〜 ${f.rows[f.rows.length-1].k.replace(/-/g,"/")}　
+          ${f.rows.length}日分　PCS${f.pcsCount}台　交流計 ${nf0(total)}kWh${flags?`　異常フラグ ${flags}日`:""}</div>
+        ${over}
+      </div>
+      <div>
+        <select class="stageSite"><option value="">選んでください</option>${opts}</select>
+        <div style="margin-top:6px"><button class="ghost stageDel">取り消す</button></div>
+      </div>
+    </div>`;
+  }).join("");
+  stage.forEach((f,i)=>{
+    const sel=$(`.stage-row[data-i="${i}"] .stageSite`);
+    if(sel) sel.value=f.siteId||"";
+  });
+  const ready=stage.length>0 && stage.every(f=>f.ok && f.siteId);
+  $("#btnCommit").disabled=!ready;
+}
+
+function commitStage(){
+  const msgs=[];
+  stage.filter(f=>f.ok&&f.siteId).forEach(f=>{
+    const d=state.data[f.siteId]||(state.data[f.siteId]={});
+    f.rows.forEach(r=>{ d[r.k]={ac:r.ac,dc:r.dc,flag:r.flag,pcs:r.pcs,pcsdc:r.pcsdc,pcsflag:r.pcsflag}; });
+    msgs.push(`${site(f.siteId).name}：${f.rows.length}日分（${f.rows[0].k.replace(/-/g,"/")}〜${f.rows[f.rows.length-1].k.replace(/-/g,"/")}）を取り込みました。`);
+  });
+  stage=[]; save(); renderAll(); renderStage();
+  $("#impStatus").innerHTML=msgs.join("<br>");
+}
+
+function handleFiles(files){
+  const list=[...files]; let done=0;
+  list.forEach(f=>{
+    const fr=new FileReader();
+    fr.onload=()=>{
+      const a=analyze(parseCSV(decode(fr.result)));
+      stage.push({name:f.name, ok:a.ok, rows:a.rows||[], pcsCount:a.pcsCount||0, siteId:""});
+      if(++done===list.length){ renderStage(); $("#impStatus").textContent=""; $("#stage").scrollIntoView({block:"nearest"}); }
+    };
+    fr.readAsArrayBuffer(f);
+  });
+}
+
+/* ---------- events ---------- */
+$$(".bar button").forEach(b=>b.addEventListener("click",()=>{
+  $$(".bar button").forEach(x=>x.classList.remove("on")); b.classList.add("on");
+  $$("section.tab").forEach(s=>s.classList.remove("on"));
+  $("#tab-"+b.dataset.tab).classList.add("on");
+}));
+$("#selRange").addEventListener("change",e=>{ state.range=e.target.value; save(); renderDash(); renderCmp(); renderDaily();
+  const ds=datesInRange(); $("#rangeInfo").textContent=ds.length?`${ds[0].replace(/-/g,"/")} 〜 ${ds[ds.length-1].replace(/-/g,"/")}（${ds.length}日）`:""; });
+
+const drop=$("#drop");
+drop.addEventListener("click",()=>$("#fileInput").click());
+drop.addEventListener("dragover",e=>{e.preventDefault();drop.classList.add("over");});
+drop.addEventListener("dragleave",()=>drop.classList.remove("over"));
+drop.addEventListener("drop",e=>{e.preventDefault();drop.classList.remove("over");
+  if(e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);});
+$("#fileInput").addEventListener("change",e=>{ if(e.target.files.length) handleFiles(e.target.files); e.target.value=""; });
+
+$("#stageList").addEventListener("change",e=>{
+  if(!e.target.classList.contains("stageSite")) return;
+  const i=+e.target.closest(".stage-row").dataset.i;
+  stage[i].siteId=e.target.value;
+  renderStage();
+});
+$("#stageList").addEventListener("click",e=>{
+  if(!e.target.classList.contains("stageDel")) return;
+  const i=+e.target.closest(".stage-row").dataset.i;
+  stage.splice(i,1); renderStage();
+});
+$("#btnCommit").addEventListener("click",commitStage);
+
+["#diagSite","#diagMode","#diagMin"].forEach(s=>$(s).addEventListener("change",renderDiag));
+$("#diagMin").addEventListener("input",renderDiag);
+$("#btnAddExc").addEventListener("click",()=>{
+  const from=$("#excFrom").value, to=$("#excTo").value, siteId=$("#excSite").value;
+  if(!from||!to||!siteId){ alert("発電所と開始・終了の日付を入れてください。"); return; }
+  if(from>to){ alert("開始が終了より後になっています。"); return; }
+  if(!state.excludes) state.excludes=[];
+  state.excludes.push({id:"e"+Date.now().toString(36),siteId,from,to,note:$("#excNote").value.trim()});
+  state.excludes.sort((a,b)=>a.from<b.from?-1:1);
+  $("#excNote").value=""; save(); renderAll();
+});
+$("#excList").addEventListener("click",e=>{
+  if(!e.target.classList.contains("excDel")) return;
+  const id=e.target.closest(".exc-row").dataset.id;
+  state.excludes=(state.excludes||[]).filter(x=>x.id!==id);
+  save(); renderAll();
+});
+$("#btnCancelStage").addEventListener("click",()=>{ stage=[]; renderStage(); $("#impStatus").textContent="取込をやめました。"; });
+
+$("#settings").addEventListener("input",e=>{
+  const blk=e.target.closest(".setblock"); if(!blk) return;
+  const s=site(blk.dataset.id); if(!s) return;
+  const t=e.target, c=t.classList;
+  if(c.contains("setName")) s.name=t.value;
+  if(c.contains("setRf")) s.rf=t.checked;
+  if(c.contains("setPair")){
+    const old=s.pair; s.pair=t.value;
+    if(old && site(old) && site(old).pair===s.id) site(old).pair="";
+    if(s.pair && site(s.pair)) site(s.pair).pair=s.id;
+  }
+  if(c.contains("spModel")||c.contains("spRated")||c.contains("spEff")||c.contains("spStart")){
+    if(!s.spec) s.spec={};
+    if(c.contains("spModel")) s.spec.model=t.value.trim();
+    if(c.contains("spRated")) s.spec.rated=t.value===""?null:parseFloat(t.value);
+    if(c.contains("spEff"))   s.spec.cateff=t.value===""?null:parseFloat(t.value);
+    if(c.contains("spStart")) s.spec.start=t.value;
+  }
+  save(); renderDash(); renderCmp(); renderDiag(); renderDaily(); renderStage(); renderExc();
+});
+$("#settings").addEventListener("click",e=>{
+  if(e.target.classList.contains("setWipe")){
+    const id=e.target.closest(".setblock").dataset.id;
+    const c=Object.keys(state.data[id]||{}).length;
+    if(!c){ alert("この発電所にはデータがありません。"); return; }
+    if(!confirm(`${site(id).name} の取込済みデータ ${c}日分を消します。発電所の設定は残ります。よろしいですか？`)) return;
+    delete state.data[id]; save(); renderAll();
+    return;
+  }
+  if(!e.target.classList.contains("setDel")) return;
+  const id=e.target.closest(".setrow").dataset.id;
+  if(!confirm("この発電所と、取り込んだデータを削除します。よろしいですか？")) return;
+  state.sites=state.sites.filter(s=>s.id!==id);
+  state.sites.forEach(s=>{ if(s.pair===id) s.pair=""; });
+  delete state.data[id]; save(); renderAll();
+});
+$("#btnAddSite").addEventListener("click",()=>{
+  const id="s"+Date.now().toString(36);
+  state.sites.push({id,name:"新しい発電所",rf:false,pair:""});
+  save(); renderAll();
+});
+$("#pFit").addEventListener("input",e=>{state.fit=parseFloat(e.target.value)||0;save();renderCmp();});
+$("#pCost").addEventListener("input",e=>{state.cost=parseFloat(e.target.value)||0;save();renderCmp();});
+$("#btnPrint").addEventListener("click",()=>{buildPrintHead();window.print();});
+$("#btnPdf").addEventListener("click",()=>{buildPrintHead();window.print();});
+$("#graphSite").addEventListener("change",renderYoY);
+$("#btnClear").addEventListener("click",()=>{
+  if(confirm("取り込んだ発電量データをすべて消します。よろしいですか？")){ state.data={}; save(); renderAll(); }
+});
+$("#btnExport").addEventListener("click",()=>{
+  const ks=datesInRange(), ps=pairList();
+  const head=["日付",...state.sites.map(s=>s.name+"(kWh)"),...ps.map(([a,b])=>`${site(b).name}-${site(a).name}`)];
+  const lines=[head.join(",")];
+  ks.forEach(k=>{
+    const row=[k];
+    state.sites.forEach(s=>{ const v=(state.data[s.id]||{})[k]; row.push(v?v.ac:""); });
+    ps.forEach(([a,b])=>{ const va=(state.data[a]||{})[k], vb=(state.data[b]||{})[k];
+      row.push(va&&vb?(vb.ac-va.ac).toFixed(1):""); });
+    lines.push(row.join(","));
+  });
+  dl(new Blob(["\uFEFF"+lines.join("\r\n")],{type:"text/csv;charset=utf-8"}),`発電量比較_${new Date().toISOString().slice(0,10)}.csv`);
+});
+$("#btnBackup").addEventListener("click",()=>{
+  const days=Object.values(state.data).reduce((t,x)=>t+Object.keys(x).length,0);
+  dl(new Blob([JSON.stringify(state)],{type:"application/json"}),
+     `発電量データ_引継ぎ用_${new Date().toISOString().slice(0,10)}.json`);
+  $("#impStatus").textContent=`引き継ぎファイルを書き出しました（${state.sites.length}発電所・計${days}日分）。このファイルとアプリのURLを渡せば、続きから入力できます。`;
+});
+$("#btnRestore").addEventListener("click",()=>$("#restoreInput").click());
+$("#restoreInput").addEventListener("change",e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const fr=new FileReader();
+  fr.onload=()=>{
+    let o;
+    try{ o=JSON.parse(fr.result); if(!o.sites||!o.data) throw 0; }
+    catch(err){ $("#impStatus").textContent="このファイルは読み込めませんでした。バックアップのJSONファイルを選んでください。"; return; }
+    const lines=o.sites.map(sv=>{
+      const ks=Object.keys(o.data[sv.id]||{}).sort();
+      return ks.length? `${sv.name}：${ks.length}日分（${ks[0].replace(/-/g,"/")}〜${ks[ks.length-1].replace(/-/g,"/")}）` : `${sv.name}：データなし`;
+    });
+    const mine=Object.values(state.data).reduce((t,x)=>t+Object.keys(x).length,0);
+    const msg=`読み込むファイルの中身\n\n${lines.join("\n")}\n\n`
+      + (mine? `この端末には現在 ${mine}日分のデータがあります。読み込むと、この端末の内容はファイルの内容に置き換わります。\n\n続けますか？`
+             : "この端末に読み込みます。続けますか？");
+    if(!confirm(msg)) { $("#impStatus").textContent="読み込みをやめました。"; return; }
+    state=Object.assign(state,o);
+    if(!state.excludes) state.excludes=[];
+    save(); renderAll();
+    $("#pFit").value=state.fit; $("#pCost").value=state.cost;
+    $("#impStatus").innerHTML="引き継ぎファイルを読み込みました。<br>"+lines.join("<br>");
+  };
+  fr.readAsText(f); e.target.value="";
+});
+function dl(blob,name){ const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
+
+/* ---------- init ---------- */
+load();
+$("#pFit").value=state.fit; $("#pCost").value=state.cost;
+renderAll();
+window.addEventListener("resize",()=>{ renderDash(); renderCmp(); });
+</script>
+</body>
+</html>
