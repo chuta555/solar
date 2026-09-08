@@ -155,6 +155,16 @@ button.act:disabled{background:#a4b3bb;cursor:not-allowed}
 .status{font-size:12.5px;color:var(--ink-soft);margin-top:12px}
 .empty{padding:30px 8px;text-align:center;color:var(--ink-soft)}
 .empty strong{display:block;color:var(--ink);font-size:15px;margin-bottom:4px}
+.savebar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--paper);
+ border:1px solid var(--line);border-top:0;padding:9px 20px;font-size:12.5px;color:var(--ink-soft)}
+.savebar .badge{display:inline-flex;align-items:center;gap:6px;font-weight:600;color:var(--ink)}
+.savebar .badge i{width:8px;height:8px;border-radius:50%;flex:none}
+.savebar .ok i{background:var(--gain)}
+.savebar .local i{background:var(--warn)}
+.savebar .err i{background:var(--loss)}
+.savebar button{background:transparent;border:1px solid var(--line);border-radius:3px;padding:4px 11px;cursor:pointer;font-size:12.5px}
+.savebar button:hover{border-color:var(--ink-soft)}
+.savebar button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
 .printonly{display:none}
 @media print{
   body{background:#fff;font-size:11.5px}
@@ -196,6 +206,8 @@ button.act:disabled{background:#a4b3bb;cursor:not-allowed}
   <label>対象期間 <select id="selRange"></select></label>
   <span id="rangeInfo"></span>
 </div>
+
+<div class="savebar noprint" id="saveBar"></div>
 
 <!-- 一覧 -->
 <section class="tab on" id="tab-dash"><div class="secprint printonly">発電所一覧</div>
@@ -367,6 +379,19 @@ button.act:disabled{background:#a4b3bb;cursor:not-allowed}
       <button class="ghost" id="btnClear">全データを消す</button>
     </div>
     <input type="file" id="restoreInput" accept=".json" class="hidden">
+    <div class="stage hidden" id="restoreStage">
+      <h3 class="stage-title">読み込むファイルの中身</h3>
+      <div id="restoreList"></div>
+      <div class="actions">
+        <button class="act" id="btnMerge">今のデータに追加する</button>
+        <button class="ghost" id="btnReplace">すべて置き換える</button>
+        <button class="ghost" id="btnCancelRestore">やめる</button>
+      </div>
+      <div class="hint">
+        「追加する」は、今あるデータを残したままファイルの内容を足します。同じ日付があればファイル側の値を使います。
+        「すべて置き換える」は、今のデータを捨ててファイルの内容だけにします。復旧が目的なら「追加する」を選んでください。
+      </div>
+    </div>
     <div class="hint">「対」に指定した発電所どうしが比較タブに並びます。リパワリング済みの側に印を付けてください。</div>
     <div class="hint">別の担当者に引き継ぐときは、「引き継ぎファイルを書き出す」で保存したJSONと、このアプリのURLの2つを渡してください。受け取った側が同じURLを開いて「引き継ぎファイルを読み込む」を選べば、続きから入力できます。データは各自の端末に保存されるため、共有フォルダに置いても自動では同期しません。</div>
   </div>
@@ -396,8 +421,130 @@ let state={
 
 /* ---------- storage ---------- */
 function load(){ try{ const r=localStorage.getItem(KEY); if(r) state=Object.assign(state,JSON.parse(r)); }catch(e){} }
-function save(){ try{ localStorage.setItem(KEY,JSON.stringify(state)); }
-  catch(e){ $("#impStatus").textContent="保存できませんでした。端末の保存領域が一杯かもしれません。"; } }
+function save(){
+  try{ localStorage.setItem(KEY,JSON.stringify(state)); }
+  catch(e){ $("#impStatus").textContent="保存できませんでした。端末の保存領域が一杯かもしれません。"; }
+  scheduleWrite();
+}
+
+/* ---------- ファイルへの自動保存 ---------- */
+const FS_OK = typeof window.showSaveFilePicker === "function";
+let fileHandle=null, waitingHandle=null, lastSaved="", saveErr="", writeTimer=null;
+
+function idb(){ return new Promise((res,rej)=>{
+  const r=indexedDB.open("solar-fs",1);
+  r.onupgradeneeded=()=>r.result.createObjectStore("h");
+  r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);
+});}
+async function idbPut(v){ try{ const db=await idb(); await new Promise(res=>{
+  const t=db.transaction("h","readwrite"); t.objectStore("h").put(v,"file"); t.oncomplete=res; t.onerror=res; });}catch(e){} }
+async function idbGet(){ try{ const db=await idb(); return await new Promise(res=>{
+  const t=db.transaction("h","readonly"); const q=t.objectStore("h").get("file");
+  q.onsuccess=()=>res(q.result||null); q.onerror=()=>res(null); });}catch(e){ return null; } }
+async function idbDel(){ try{ const db=await idb(); await new Promise(res=>{
+  const t=db.transaction("h","readwrite"); t.objectStore("h").delete("file"); t.oncomplete=res; t.onerror=res; });}catch(e){} }
+
+async function writeFileNow(){
+  if(!fileHandle) return;
+  try{
+    const w=await fileHandle.createWritable();
+    await w.write(JSON.stringify(state));
+    await w.close();
+    lastSaved=new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"});
+    saveErr=""; renderSaveBar();
+  }catch(e){
+    saveErr="ファイルに書き込めませんでした。移動・削除されたか、書き込み許可が切れています。";
+    renderSaveBar();
+  }
+}
+function scheduleWrite(){
+  if(!fileHandle) return;
+  clearTimeout(writeTimer);
+  writeTimer=setTimeout(writeFileNow,700);
+}
+async function applyFile(h){
+  const f=await h.getFile();
+  const txt=await f.text();
+  if(txt.trim()){
+    const o=JSON.parse(txt);
+    if(o.sites&&o.data){ state=Object.assign(state,o); if(!state.excludes) state.excludes=[]; }
+  }
+  fileHandle=h; waitingHandle=null; saveErr="";
+  lastSaved=new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"});
+  try{ localStorage.setItem(KEY,JSON.stringify(state)); }catch(e){}
+  renderAll(); $("#pFit").value=state.fit; $("#pCost").value=state.cost;
+}
+async function chooseSaveFile(){
+  try{
+    const h=await window.showSaveFilePicker({
+      suggestedName:"発電量データ.json",
+      types:[{description:"発電量データ",accept:{"application/json":[".json"]}}]
+    });
+    fileHandle=h; waitingHandle=null; await idbPut(h); await writeFileNow(); renderSaveBar();
+  }catch(e){}
+}
+async function openSaveFile(){
+  try{
+    const [h]=await window.showOpenFilePicker({
+      types:[{description:"発電量データ",accept:{"application/json":[".json"]}}]
+    });
+    await applyFile(h); await idbPut(h); renderSaveBar();
+  }catch(e){
+    if(e && e.name!=="AbortError"){ saveErr="このファイルは読み込めませんでした。"; renderSaveBar(); }
+  }
+}
+async function reconnectFile(){
+  if(!waitingHandle) return;
+  try{
+    const p=await waitingHandle.requestPermission({mode:"readwrite"});
+    if(p!=="granted"){ saveErr="書き込みが許可されませんでした。"; renderSaveBar(); return; }
+    await applyFile(waitingHandle); renderSaveBar();
+  }catch(e){ saveErr="ファイルに接続できませんでした。"; renderSaveBar(); }
+}
+async function detachFile(){
+  fileHandle=null; waitingHandle=null; lastSaved=""; saveErr="";
+  await idbDel(); renderSaveBar();
+}
+async function initFileSave(){
+  if(!FS_OK){ renderSaveBar(); return; }
+  const h=await idbGet();
+  if(!h){ renderSaveBar(); return; }
+  try{
+    const p=await h.queryPermission({mode:"readwrite"});
+    if(p==="granted"){ await applyFile(h); }
+    else { waitingHandle=h; }
+  }catch(e){ waitingHandle=h; }
+  renderSaveBar();
+}
+function renderSaveBar(){
+  const bar=$("#saveBar"); if(!bar) return;
+  if(!FS_OK){
+    bar.innerHTML=`<span class="badge local"><i></i>保存先：この端末</span>
+      <span>入力するたび自動保存されます。この端末のブラウザの中にだけ残るため、月に一度は「取込・設定」で引き継ぎファイルを書き出してください。</span>`;
+    return;
+  }
+  if(fileHandle){
+    bar.innerHTML=`<span class="badge ok"><i></i>保存先：${fileHandle.name}</span>
+      <span>${saveErr? saveErr : (lastSaved? lastSaved+" に保存":"接続中")}</span>
+      <button id="sbOpen">別のファイルを開く</button>
+      <button id="sbDetach">解除</button>`;
+  }else if(waitingHandle){
+    bar.innerHTML=`<span class="badge local"><i></i>保存先：この端末（ファイル未接続）</span>
+      <span>前回のファイルへの書き込み許可が切れています。${saveErr}</span>
+      <button class="on" id="sbReconnect">${waitingHandle.name} に接続</button>
+      <button id="sbDetach">解除</button>`;
+  }else{
+    bar.innerHTML=`<span class="badge local"><i></i>保存先：この端末</span>
+      <span>ファイルを指定すると、入力するたびそのファイルへ自動保存します。${saveErr}</span>
+      <button class="on" id="sbChoose">保存ファイルを作る</button>
+      <button id="sbOpen">既存のファイルを開く</button>`;
+  }
+  const b=id=>bar.querySelector(id);
+  if(b("#sbChoose")) b("#sbChoose").onclick=chooseSaveFile;
+  if(b("#sbOpen")) b("#sbOpen").onclick=openSaveFile;
+  if(b("#sbReconnect")) b("#sbReconnect").onclick=reconnectFile;
+  if(b("#sbDetach")) b("#sbDetach").onclick=detachFile;
+}
 
 /* ---------- helpers ---------- */
 const nf=(n,d=1)=> (n==null||isNaN(n))?"–":n.toLocaleString("ja-JP",{minimumFractionDigits:d,maximumFractionDigits:d});
@@ -1314,29 +1461,92 @@ $("#btnBackup").addEventListener("click",()=>{
   $("#impStatus").textContent=`引き継ぎファイルを書き出しました（${state.sites.length}発電所・計${days}日分）。このファイルとアプリのURLを渡せば、続きから入力できます。`;
 });
 $("#btnRestore").addEventListener("click",()=>$("#restoreInput").click());
+let pendingRestore=null;
+
+function summarizeRestore(o){
+  return o.sites.map(sv=>{
+    const inc=Object.keys(o.data[sv.id]||{}).sort();
+    // 同じidが無ければ同名の発電所に合わせる
+    let local=site(sv.id) || state.sites.find(x=>x.name===sv.name);
+    const cur=local? Object.keys(state.data[local.id]||{}).sort() : [];
+    const merged=new Set([...cur,...inc]);
+    return {sv,local,inc,cur,merged:merged.size};
+  });
+}
+
+function renderRestoreStage(){
+  if(!pendingRestore){ $("#restoreStage").classList.add("hidden"); return; }
+  const rows=summarizeRestore(pendingRestore);
+  $("#restoreStage").classList.remove("hidden");
+  $("#restoreList").innerHTML=`<div class="tablewrap" style="max-height:none"><table>
+    <thead><tr><th>発電所</th><th>ファイル</th><th>今の端末</th><th>追加後</th></tr></thead>
+    <tbody>${rows.map(r=>{
+      const span=r.inc.length? `${r.inc[0].replace(/-/g,"/")}〜${r.inc[r.inc.length-1].replace(/-/g,"/")}` : "";
+      const gain=r.merged-r.cur.length;
+      return `<tr><td>${r.sv.name}${r.local?"":" <span class=\"nodata\">(新規)</span>"}</td>
+        <td>${r.inc.length?r.inc.length+"日分":"–"}<div class="nodata" style="font-size:11px">${span}</div></td>
+        <td>${r.cur.length?r.cur.length+"日分":"–"}</td>
+        <td class="${gain>0?"pos":""}">${r.merged}日分${gain>0?`（+${gain}）`:""}</td></tr>`;
+    }).join("")}</tbody></table></div>`;
+}
+
+function doRestore(mode){
+  const o=pendingRestore; if(!o) return;
+  if(mode==="replace"){
+    state=Object.assign(state,o);
+    if(!state.excludes) state.excludes=[];
+  }else{
+    // 発電所をそろえる（id一致 → 同名 → 新規追加）
+    const map={};
+    o.sites.forEach(sv=>{
+      let local=site(sv.id) || state.sites.find(x=>x.name===sv.name);
+      if(!local){ local={...sv}; state.sites.push(local); }
+      map[sv.id]=local.id;
+      if(!local.spec) local.spec={};
+      if(sv.spec) ["model","rated","cateff","start"].forEach(k=>{
+        if(local.spec[k]==null||local.spec[k]==="") local.spec[k]=sv.spec[k];
+      });
+    });
+    // データを日付単位で合体（同じ日付はファイル側を採用）
+    Object.keys(o.data||{}).forEach(oldId=>{
+      const id=map[oldId]||oldId;
+      state.data[id]=Object.assign({}, state.data[id]||{}, o.data[oldId]);
+    });
+    // 除外期間は重複しないものだけ足す
+    if(!state.excludes) state.excludes=[];
+    (o.excludes||[]).forEach(e=>{
+      const sid=map[e.siteId]||e.siteId;
+      if(!state.excludes.some(x=>x.siteId===sid&&x.from===e.from&&x.to===e.to))
+        state.excludes.push({...e,siteId:sid,id:"e"+Date.now().toString(36)+Math.random().toString(36).slice(2,5)});
+    });
+  }
+  const total=Object.values(state.data).reduce((t,x)=>t+Object.keys(x).length,0);
+  pendingRestore=null; renderRestoreStage();
+  save(); renderAll();
+  $("#pFit").value=state.fit; $("#pCost").value=state.cost;
+  $("#impStatus").textContent = mode==="replace"
+    ? `ファイルの内容に置き換えました（計${total}日分）。`
+    : `今のデータにファイルの内容を足しました（計${total}日分）。`;
+}
+
 $("#restoreInput").addEventListener("change",e=>{
   const f=e.target.files[0]; if(!f) return;
   const fr=new FileReader();
   fr.onload=()=>{
-    let o;
-    try{ o=JSON.parse(fr.result); if(!o.sites||!o.data) throw 0; }
-    catch(err){ $("#impStatus").textContent="このファイルは読み込めませんでした。バックアップのJSONファイルを選んでください。"; return; }
-    const lines=o.sites.map(sv=>{
-      const ks=Object.keys(o.data[sv.id]||{}).sort();
-      return ks.length? `${sv.name}：${ks.length}日分（${ks[0].replace(/-/g,"/")}〜${ks[ks.length-1].replace(/-/g,"/")}）` : `${sv.name}：データなし`;
-    });
-    const mine=Object.values(state.data).reduce((t,x)=>t+Object.keys(x).length,0);
-    const msg=`読み込むファイルの中身\n\n${lines.join("\n")}\n\n`
-      + (mine? `この端末には現在 ${mine}日分のデータがあります。読み込むと、この端末の内容はファイルの内容に置き換わります。\n\n続けますか？`
-             : "この端末に読み込みます。続けますか？");
-    if(!confirm(msg)) { $("#impStatus").textContent="読み込みをやめました。"; return; }
-    state=Object.assign(state,o);
-    if(!state.excludes) state.excludes=[];
-    save(); renderAll();
-    $("#pFit").value=state.fit; $("#pCost").value=state.cost;
-    $("#impStatus").innerHTML="引き継ぎファイルを読み込みました。<br>"+lines.join("<br>");
+    try{ const o=JSON.parse(fr.result); if(!o.sites||!o.data) throw 0; pendingRestore=o; }
+    catch(err){ $("#impStatus").textContent="このファイルは読み込めませんでした。引き継ぎ用のJSONファイルを選んでください。"; return; }
+    $("#impStatus").textContent="";
+    renderRestoreStage();
+    $("#restoreStage").scrollIntoView({block:"nearest"});
   };
   fr.readAsText(f); e.target.value="";
+});
+$("#btnMerge").addEventListener("click",()=>doRestore("merge"));
+$("#btnReplace").addEventListener("click",()=>{
+  if(confirm("今の端末のデータをすべて捨てて、ファイルの内容だけにします。よろしいですか？")) doRestore("replace");
+});
+$("#btnCancelRestore").addEventListener("click",()=>{
+  pendingRestore=null; renderRestoreStage(); $("#impStatus").textContent="読み込みをやめました。";
 });
 function dl(blob,name){ const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
 
@@ -1344,6 +1554,8 @@ function dl(blob,name){ const a=document.createElement("a"); a.href=URL.createOb
 load();
 $("#pFit").value=state.fit; $("#pCost").value=state.cost;
 renderAll();
+renderSaveBar();
+initFileSave();
 window.addEventListener("resize",()=>{ renderDash(); renderCmp(); });
 </script>
 </body>
